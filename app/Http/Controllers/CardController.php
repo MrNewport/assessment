@@ -41,4 +41,21 @@ class CardController extends Controller
         return new CardResource($card);
     }
 
+    /**
+     * Update the specified resource in storage.
+     */
+    public function update(StoreCardRequest $request, Card $card)
+    {
+        $data = $request->validated();
+
+        // Handle image upload if present
+        if ($request->hasFile('image')) {
+            $data['image'] = $request->file('image')->store('cards', 'public'); // Store in /storage/app/public/cards
+        }
+
+        $card->update($data);
+
+        return new CardResource($card);
+    }
+
 }

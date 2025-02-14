@@ -10,10 +10,12 @@
                 <div v-if="!isBack">
                     <InputField label="Recipient Name" id="recipient" v-model="form.recipient" :error="serverErrors.recipient" :required="true" />
                     <InputField label="Street 1" id="street1" v-model="form.street1" :error="serverErrors.street1" :required="true" />
-                    <InputField label="Street 2" id="street2" v-model="form.street2" :error="serverErrors.street2" :required="false" placeholder="Optional" />
 
-                    <div class="grid grid-cols-3 gap-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <InputField label="Street 2" id="street2" v-model="form.street2" :error="serverErrors.street2" :required="false" placeholder="Optional" />
                         <InputField label="City" id="city" v-model="form.city" :error="serverErrors.city" :required="true" />
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
                         <InputField label="State" id="state" v-model="form.state" :error="serverErrors.state" :required="true" />
                         <InputField label="Zip Code" id="zip" v-model="form.zip" :error="serverErrors.zip" :required="true" />
                     </div>
@@ -30,18 +32,18 @@
             </div>
 
             <!-- Right Column: Postcard Preview -->
-            <div class="w-1/2 bg-blue-300 p-8 flex flex-col items-center relative">
+            <div class="w-1/2 bg-blue-300 flex flex-col items-center relative">
                 <h2 class="text-xl font-bold text-white mb-4">Preview</h2>
 
-                <div class="aspect-[3/2] w-full max-w-lg p-4 shadow-md relative flex border bg-white"
+                <div class="aspect-[3/2] w-full max-w-2xl p-4 shadow-md relative flex border bg-white"
                      :style="{ backgroundImage: isBack ? `url(${uploadedImage})` : 'none', backgroundSize: 'cover' }">
 
                     <template v-if="!isBack">
-                        <div class="w-1/2 p-2 text-sm text-gray-700 break-words whitespace-pre-line">
+                        <div class="w-1/2 p-2 text-sm text-gray-700 break-words whitespace-pre-line flex items-center">
                             <div v-html="form.message"></div>
                         </div>
                         <div class="w-[1px] bg-gray-400"></div>
-                        <div class="w-1/2 p-2 flex flex-col text-gray-800 text-sm">
+                        <div class="w-1/2 p-2 flex flex-col text-gray-800 text-sm justify-center">
                             <p class="font-semibold">{{ form.recipient || 'Recipient Name' }}</p>
                             <p>{{ form.street1 || 'Street Address' }}</p>
                             <p v-if="form.street2">{{ form.street2 }}</p>
@@ -110,7 +112,7 @@ async function fetchCard() {
         const data = await response.json();
         await nextTick();
         form.value = { ...data.data };
-        if (data.image) uploadedImage.value = data.image;
+        if (data.data.image) uploadedImage.value = data.data.image;
     } catch (error) {
         console.error('Error fetching card:', error);
     }
@@ -119,13 +121,30 @@ async function fetchCard() {
 async function handleSave() {
     const formData = new FormData();
     formData.append('_token', csrfToken);
+
+    if(cardId.value) formData.append('_method', 'PUT');
+
+    // Append all form fields except image
     Object.entries(form.value).forEach(([key, value]) => {
-        if (value) formData.append(key, value);
+        if (key !== 'image' && value) {
+            formData.append(key, value);
+        }
     });
+
+    // Handle image upload only if a new image is provided
+    if (form.value.image instanceof File) {
+        formData.append('image', form.value.image);
+    } else if (form.value.image && form.value.image !== uploadedImage.value) {
+        // The image has changed but is a URL, so fetch and re-upload it
+        const file = await urlToFile(form.value.image);
+        if (file) {
+            formData.append('image', file);
+        }
+    }
 
     try {
         const response = await fetch(cardId.value ? `/api/cards/${cardId.value}` : '/api/cards', {
-            method: cardId.value ? 'PUT' : 'POST',
+            method: 'POST',
             headers: { 'Accept': 'application/json' },
             body: formData,
         });
@@ -153,8 +172,28 @@ function handleImageUpload(event) {
 
 function handleCopyLink() {
     const link = `${window.location.origin}/cards/${cardId.value}`;
-    window.navigator.clipboard.writeText(link).then(() => window.alert('Link copied to clipboard!'));
+
+    navigator.clipboard.writeText(link)
+        .then(() => window.alert('Link copied to clipboard!'))
+        .catch(err => {
+            console.error('Clipboard write failed:', err);
+            window.alert('Failed to copy link. Please copy it manually. Link: ' + link);
+        });
+
 }
+
+async function urlToFile(imageUrl) {
+    try {
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        const filename = imageUrl.split('/').pop(); // Extract filename from URL
+        return new File([blob], filename, { type: blob.type });
+    } catch (error) {
+        console.error('Failed to convert image URL to file:', error);
+        return null;
+    }
+}
+
 
 onMounted(() => { if (cardId.value) fetchCard(); });
 watch(() => route.params.id, (newId) => { cardId.value = newId; newId ? fetchCard() : Object.assign(form.value, {}); });

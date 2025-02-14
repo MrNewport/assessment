@@ -14,5 +14,6 @@ class Card extends Model
         'state',
         'zip',
         'message',
+        'image'
     ];
 }
